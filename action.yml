@@ -1,0 +1,45 @@
+name: Extract YouTrack issues
+description: Extract YouTrack issues
+
+outputs:
+  issues:
+    description: "The issues ids"
+    value: ${{ steps.extract-youtrack-issues.outputs.issues }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Find YouTrack issue id from PR description
+      run: |
+        if [ -n "${{ github.event.pull_request }}" ]; then
+          text=$(cat << "EOF"
+          ${{ github.event.pull_request.body }}
+        EOF
+          )
+        else
+          last_tag=$(git rev-parse $(git describe --abbrev=0 --tags HEAD^))
+          echo "Last tag commit: $last_tag"
+          text=$(git log --pretty=format:"%B" $last_tag..HEAD)
+        fi
+        readarray -t issues_ids < <(echo "$text" | grep -oP '(#|\^)\K\w+-\d+' | sort | uniq)
+        if [ ${#issues_ids[@]} -eq 0 ]; then
+          echo "No issues found"
+          issues="[]"
+        else
+          issues=$(printf '%s\n' "${issues_ids[@]}" | jq -R . | jq -s . | jq -c .)
+        fi
+        echo "issues_ids=$issues"
+        echo "issues_ids=$issues" >> "$GITHUB_ENV"
+      shell: bash
+
+    - name: Output issues
+      id: extract-youtrack-issues
+      run: |
+        echo 'issues=${{ env.issues_ids }}'
+        echo 'issues=${{ env.issues_ids }}' >> "$GITHUB_OUTPUT"
+      shell: bash
